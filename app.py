@@ -6,25 +6,39 @@ from io import BytesIO
 
 DB_NAME = "leads.db"
 
-BASE_COLUMNS = [
-    "תאריך קבלת ליד",
-    "תז",
-    "שם פרטי",
-    "שם משפחה",
-    "תאריך לידה",
-    "מס טלפון",
-    "תאריך הנפקת תז",
-    "טלפון נקי",
-    "סטטוס טלפון",
-    "created_at",
-    "updated_at",
-    "מקור",
-]
-
 st.set_page_config(page_title="Lead Export Manager", layout="wide")
-st.title("🚀 Lead Export Manager")
+
+# ---------- עיצוב ----------
+st.markdown("""
+<style>
+.main-title {
+    text-align: center;
+    font-size: 42px;
+    font-weight: 900;
+    margin-bottom: 10px;
+}
+.sub-title {
+    text-align: center;
+    font-size: 20px;
+    color: #666;
+    margin-bottom: 35px;
+}
+.stButton > button {
+    height: 115px;
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    border-radius: 22px !important;
+    border: 2px solid #ddd !important;
+}
+.small-btn > button {
+    height: 45px !important;
+    font-size: 16px !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
+# ---------- פונקציות ----------
 def now_str():
     return datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 
@@ -39,6 +53,7 @@ def clean_tz(value):
 def clean_phone(value):
     if pd.isna(value):
         return ""
+
     phone = "".join(ch for ch in str(value) if ch.isdigit())
 
     if phone.startswith("972"):
@@ -51,10 +66,6 @@ def clean_phone(value):
         return phone
 
     return ""
-
-
-def phone_status(phone):
-    return "תקין" if phone else "לא תקין"
 
 
 def init_db():
@@ -108,12 +119,13 @@ def save_lead(row, source="ידני"):
 
     phone_clean = clean_phone(row.get("מס טלפון", ""))
 
-    c.execute("SELECT tz, created_at FROM leads WHERE tz = ?", (tz,))
+    c.execute("SELECT created_at FROM leads WHERE tz = ?", (tz,))
     existing = c.fetchone()
 
     if existing:
-        created_at = existing[1]
+        created_at = existing[0]
         updated_at = now_str()
+
         c.execute("""
         UPDATE leads
         SET first_name=?, last_name=?, birth_date=?, phone=?, phone_clean=?,
@@ -133,6 +145,7 @@ def save_lead(row, source="ידני"):
     else:
         created_at = now_str()
         updated_at = created_at
+
         c.execute("""
         INSERT INTO leads
         (tz, first_name, last_name, birth_date, phone, phone_clean,
@@ -220,18 +233,54 @@ def to_excel(df):
 
 init_db()
 
-menu = st.sidebar.radio(
-    "תפריט",
-    [
-        "📤 העלאת קובץ",
-        "✍️ העלאת רשומה ידנית",
-        "📦 משיכת רשומות לפי לקוח",
-        "📊 כמה רשומות קיימות",
-        "🔎 חיפוש לפי תז",
-    ]
-)
+if "page" not in st.session_state:
+    st.session_state.page = "home"
 
-if menu == "📤 העלאת קובץ":
+
+def go(page):
+    st.session_state.page = page
+    st.rerun()
+
+
+# ---------- מסך בית ----------
+if st.session_state.page == "home":
+    st.markdown('<div class="main-title">🚀 Lead Export Manager</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">מערכת לניהול לידים, לקוחות, ייצואים וחיפוש רשומות</div>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("📤\n\nהעלאת קובץ", use_container_width=True):
+            go("upload")
+
+    with col2:
+        if st.button("✍️\n\nהעלאת רשומה ידנית", use_container_width=True):
+            go("manual")
+
+    with col3:
+        if st.button("📦\n\nמשיכת רשומות לפי לקוח", use_container_width=True):
+            go("export")
+
+    col4, col5 = st.columns(2)
+
+    with col4:
+        if st.button("📊\n\nכמה רשומות קיימות", use_container_width=True):
+            go("reports")
+
+    with col5:
+        if st.button("🔎\n\nחיפוש לפי תז", use_container_width=True):
+            go("search")
+
+    st.stop()
+
+
+# ---------- כפתור חזרה ----------
+if st.button("⬅️ חזרה למסך הראשי"):
+    go("home")
+
+
+# ---------- העלאת קובץ ----------
+if st.session_state.page == "upload":
     st.header("📤 העלאת קובץ")
 
     uploaded_file = st.file_uploader("העלה קובץ Excel או CSV", type=["xlsx", "csv"])
@@ -243,9 +292,9 @@ if menu == "📤 העלאת קובץ":
             df = pd.read_excel(uploaded_file)
 
         st.subheader("תצוגה מקדימה")
-        st.dataframe(df.head(20), use_container_width=True)
+        st.dataframe(df.head(30), use_container_width=True)
 
-        st.info("המערכת מצפה לעמודות כמו בקובץ שלך: תאריך קבלת ליד, ת״ז, שם פרטי, שם משפחה, תאריך לידה, מס טלפון, תאריך הנפקת ת״ז")
+        st.info("המערכת מחפשת עמודות: תז, שם פרטי, שם משפחה, תאריך לידה, מס טלפון, תאריך הנפקת תז")
 
         if st.button("🧹 נקה ושמור למאגר"):
             saved = 0
@@ -254,6 +303,8 @@ if menu == "📤 העלאת קובץ":
                 'ת"ז': "תז",
                 'תעודת זהות': "תז",
                 'תאריך הנפקת ת"ז': "תאריך הנפקת תז",
+                'טלפון': "מס טלפון",
+                'מספר טלפון': "מס טלפון",
             })
 
             for _, row in df.iterrows():
@@ -271,7 +322,9 @@ if menu == "📤 העלאת קובץ":
 
             st.success(f"נשמרו / עודכנו {saved} רשומות במאגר")
 
-elif menu == "✍️ העלאת רשומה ידנית":
+
+# ---------- רשומה ידנית ----------
+elif st.session_state.page == "manual":
     st.header("✍️ העלאת רשומה ידנית")
 
     with st.form("manual_form"):
@@ -282,7 +335,7 @@ elif menu == "✍️ העלאת רשומה ידנית":
         phone = st.text_input("מס טלפון")
         id_issue_date = st.text_input("תאריך הנפקת תז")
 
-        submitted = st.form_submit_button("צור / עדכן רשומה")
+        submitted = st.form_submit_button("✅ צור / עדכן רשומה")
 
         if submitted:
             row = {
@@ -297,14 +350,16 @@ elif menu == "✍️ העלאת רשומה ידנית":
             save_lead(row, "ידני")
             st.success("הרשומה נשמרה עם תאריך יצירה / עדכון אוטומטי")
 
-elif menu == "📦 משיכת רשומות לפי לקוח":
+
+# ---------- ייצוא ללקוח ----------
+elif st.session_state.page == "export":
     st.header("📦 משיכת רשומות לפי לקוח")
 
-    client_name = st.text_input("שם לקוח")
+    client_name = st.text_input("שם לקוח חדש")
 
     if st.button("➕ צור לקוח"):
-        if client_name:
-            add_client(client_name)
+        if client_name.strip():
+            add_client(client_name.strip())
             st.success("לקוח נוצר / כבר קיים")
 
     clients_df = get_clients()
@@ -333,7 +388,9 @@ elif menu == "📦 משיכת רשומות לפי לקוח":
     else:
         st.info("עדיין אין לקוחות. צור לקוח ראשון למעלה.")
 
-elif menu == "📊 כמה רשומות קיימות":
+
+# ---------- דוחות ----------
+elif st.session_state.page == "reports":
     st.header("📊 כמה רשומות קיימות")
 
     leads_df = get_leads()
@@ -347,17 +404,21 @@ elif menu == "📊 כמה רשומות קיימות":
     col2.metric("טלפונים תקינים", valid_phone)
     col3.metric("טלפונים לא תקינים / חסרים", invalid_phone)
 
+    st.subheader("מאגר רשומות")
     st.dataframe(leads_df, use_container_width=True)
 
-elif menu == "🔎 חיפוש לפי תז":
+
+# ---------- חיפוש לפי תז ----------
+elif st.session_state.page == "search":
     st.header("🔎 חיפוש לפי תז")
 
     search_tz = st.text_input("הכנס תז לחיפוש")
 
-    if st.button("חפש"):
+    if st.button("🔍 חפש"):
         search_tz = clean_tz(search_tz)
 
         conn = sqlite3.connect(DB_NAME)
+
         lead_df = pd.read_sql_query(
             "SELECT * FROM leads WHERE tz = ?",
             conn,
